@@ -1,0 +1,1 @@
+# lazyvoice Setup Guide
