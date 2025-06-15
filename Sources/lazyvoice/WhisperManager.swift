@@ -96,18 +96,59 @@ class WhisperManager: ObservableObject {
     @Published var lastTranscription = ""
     
     private var context: WhisperContext?
-    private var modelPath: String
+    private var currentModelName: String = ""
+    private var cancellables = Set<AnyCancellable>()
     
     // Callback for when transcription completes
     var onTranscriptionComplete: ((String) -> Void)?
     
-    init(modelPath: String = "ggml-tiny.bin") {
-        // Use the model in the same directory as the executable
-        self.modelPath = modelPath
-        initializeWhisper()
+    init() {
+        // Start monitoring preference changes
+        setupPreferenceMonitoring()
+        // Initialize with current preference
+        reloadModelFromPreferences()
     }
     
-    private func initializeWhisper() {
+    deinit {
+        cancellables.removeAll()
+    }
+    
+    private func setupPreferenceMonitoring() {
+        // Monitor changes to whisperModel preference
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .sink { [weak self] _ in
+                self?.reloadModelFromPreferences()
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func reloadModelFromPreferences() {
+        let selectedModel = UserDefaults.standard.string(forKey: "whisperModel") ?? "tiny"
+        let modelFileName = getModelFileName(for: selectedModel)
+        
+        // Only reload if model has changed
+        guard modelFileName != currentModelName else {
+            print("WhisperManager: Model unchanged (\(selectedModel)), skipping reload")
+            return
+        }
+        
+        print("WhisperManager: Reloading model from '\(currentModelName)' to '\(selectedModel)' (\(modelFileName))")
+        currentModelName = modelFileName
+        initializeWhisper(modelPath: modelFileName)
+    }
+    
+    private func getModelFileName(for modelType: String) -> String {
+        switch modelType {
+        case "base":
+            return "ggml-base.bin"
+        case "small":
+            return "ggml-small.bin"
+        default:
+            return "ggml-tiny.bin"
+        }
+    }
+
+    private func initializeWhisper(modelPath: String) {
         do {
             var fullPath: String? = nil
             
@@ -117,12 +158,12 @@ class WhisperManager: ObservableObject {
             
             let searchPaths = [
                 // Bundle resource
-                Bundle.main.path(forResource: "ggml-tiny", ofType: "bin"),
+                Bundle.main.path(forResource: modelPath.replacingOccurrences(of: ".bin", with: ""), ofType: "bin"),
                 // Bundle resource with full name
-                Bundle.main.path(forResource: "ggml-tiny.bin", ofType: nil),
+                Bundle.main.path(forResource: modelPath, ofType: nil),
                 // Bundle.main.url(forResource:) alternative
-                Bundle.main.url(forResource: "ggml-tiny", withExtension: "bin")?.path,
-                Bundle.main.url(forResource: "ggml-tiny.bin", withExtension: nil)?.path,
+                Bundle.main.url(forResource: modelPath.replacingOccurrences(of: ".bin", with: ""), withExtension: "bin")?.path,
+                Bundle.main.url(forResource: modelPath, withExtension: nil)?.path,
                 // Current directory (for swift run)
                 FileManager.default.currentDirectoryPath + "/" + modelPath,
                 // Sources directory (for development)
@@ -148,20 +189,30 @@ class WhisperManager: ObservableObject {
                 }
             }
             
-            guard let modelPath = fullPath else {
-                print("WhisperManager: Model file '\(self.modelPath)' not found in any search location")
+            guard let resolvedModelPath = fullPath else {
+                print("WhisperManager: Model file '\(modelPath)' not found in any search location")
                 print("WhisperManager: Searched paths:")
                 for path in searchPaths {
                     print("  - \(path ?? "nil")")
                 }
+                
+                // Fallback to tiny model if requested model not found
+                if modelPath != "ggml-tiny.bin" {
+                    print("WhisperManager: Falling back to tiny model")
+                    currentModelName = "ggml-tiny.bin"
+                    initializeWhisper(modelPath: "ggml-tiny.bin")
+                    return
+                }
+                
                 throw WhisperError.modelNotFound
             }
             
-            print("WhisperManager: Found model at: \(modelPath)")
-            context = try WhisperContext.createContext(path: modelPath)
-            print("WhisperManager: Whisper context initialized successfully")
+            print("WhisperManager: Found model at: \(resolvedModelPath)")
+            context = try WhisperContext.createContext(path: resolvedModelPath)
+            print("WhisperManager: Whisper context initialized successfully with model: \(modelPath)")
         } catch {
             print("WhisperManager: Failed to initialize Whisper context: \(error)")
+            context = nil
         }
     }
     
@@ -213,10 +264,9 @@ class WhisperManager: ObservableObject {
         }
     }
     
+    // Legacy method for compatibility
     func updateModelPath(_ newPath: String) {
-        // Re-initialize with new model
-        modelPath = newPath
-        initializeWhisper()
-        print("WhisperManager: Model path updated to: \(newPath)")
+        // This method is now handled automatically via preference monitoring
+        print("WhisperManager: updateModelPath called with \(newPath) - this is now handled automatically")
     }
 } 

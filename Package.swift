@@ -61,7 +61,9 @@ let package = Package(
                 "PermissionManager.swift"
             ],
             resources: [
-                .copy("ggml-tiny.bin")
+                .copy("ggml-tiny.bin"),
+                .copy("ggml-base.bin"),
+                .copy("ggml-small.bin")
             ],
             linkerSettings: [
                 .linkedFramework("AVFoundation"),

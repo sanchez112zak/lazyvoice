@@ -27,8 +27,10 @@ cp "${BUILD_DIR}/${APP_NAME}" "${MACOS_DIR}/"
 # Copy Info.plist
 cp Info.plist "${CONTENTS_DIR}/"
 
-# Copy model file to Resources
+# Copy model files to Resources
 cp "Sources/lazyvoice/ggml-tiny.bin" "${RESOURCES_DIR}/"
+cp "Sources/lazyvoice/ggml-base.bin" "${RESOURCES_DIR}/" 2>/dev/null || echo "Warning: ggml-base.bin not found"
+cp "Sources/lazyvoice/ggml-small.bin" "${RESOURCES_DIR}/" 2>/dev/null || echo "Warning: ggml-small.bin not found"
 
 # Copy app icons
 if [ -d "Resources/Assets.xcassets/AppIcon.appiconset" ]; then

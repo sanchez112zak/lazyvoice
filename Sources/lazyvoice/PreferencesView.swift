@@ -68,12 +68,16 @@ struct PreferencesView: View {
                         HStack {
                             Text("Whisper model:")
                             Picker("Model", selection: $whisperModel) {
-                                Text("Tiny (fastest)").tag("tiny")
-                                Text("Base (balanced)").tag("base")
-                                Text("Small (accurate)").tag("small")
+                                Text("Tiny (fastest, ~39MB)").tag("tiny")
+                                Text("Base (balanced, ~148MB)").tag("base")
+                                Text("Small (accurate, ~488MB)").tag("small")
                             }
                             .pickerStyle(MenuPickerStyle())
                         }
+                        
+                        Text("Larger models provide better accuracy but use more memory and are slower. Changes take effect immediately.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                     .padding()
                 }
