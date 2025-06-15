@@ -17,9 +17,6 @@ class TranscriptionService: ObservableObject {
     // History management
     let historyManager = HistoryManager()
     
-    // Settings
-    @Published var outputMode = 1 // 0: Clipboard, 1: Auto-paste (default to auto-paste)
-    
     // Recording tracking for history
     private var recordingStartTime: Date?
     
@@ -190,15 +187,8 @@ class TranscriptionService: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            // Process the transcription based on output mode
-            switch self.outputMode {
-            case 0:
-                self.copyToClipboard(transcription)
-            case 1:
-                self.autoPasteText(transcription)
-            default:
-                self.copyToClipboard(transcription)
-            }
+            // Always do both: copy to clipboard AND auto-paste
+            self.copyToClipboardAndAutoPaste(transcription)
             
             self.currentStatus = "Ready"
             self.isActive = false
@@ -206,52 +196,45 @@ class TranscriptionService: ObservableObject {
         }
     }
     
-    private func copyToClipboard(_ text: String) {
+    private func copyToClipboardAndAutoPaste(_ text: String) {
+        // First, always copy to clipboard
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         
         print("Transcription copied to clipboard: \(text)")
         
-        // Show notification
-        showNotification(title: "Transcription Complete", message: "Text copied to clipboard")
-    }
-    
-    private func autoPasteText(_ text: String) {
-        // First copy to clipboard
-        copyToClipboard(text)
-        
-        // Check if we have accessibility permissions
+        // Then attempt auto-paste if accessibility permissions are available
         let trusted = AXIsProcessTrusted()
-        if !trusted {
-            print("Auto-paste: No accessibility permissions. Please enable in System Settings > Privacy & Security > Accessibility")
-            showNotification(title: "Permission Required", message: "Enable Accessibility permission for auto-paste. Text copied to clipboard.")
-            return
-        }
-        
-        // Then simulate paste (Cmd+V) after a short delay to ensure clipboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            autoreleasepool {
-                // Create Cmd+V key press
-                guard let cmdVDown = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
-                      let cmdVUp = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false) else {
-                    print("Auto-paste: Failed to create key events")
-                    return
+        if trusted {
+            // Simulate paste (Cmd+V) after a short delay to ensure clipboard is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                autoreleasepool {
+                    // Create Cmd+V key press
+                    guard let cmdVDown = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
+                          let cmdVUp = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false) else {
+                        print("Auto-paste: Failed to create key events")
+                        return
+                    }
+                    
+                    // Set Command modifier flag
+                    cmdVDown.flags = .maskCommand
+                    cmdVUp.flags = .maskCommand
+                    
+                    // Post the events
+                    cmdVDown.post(tap: .cghidEventTap)
+                    cmdVUp.post(tap: .cghidEventTap)
+                    
+                    print("Auto-paste executed for text: '\(text)'")
+                    
+                    // Show notification for successful auto-paste
+                    self.showNotification(title: "Transcription Complete", message: "Text copied to clipboard and auto-pasted")
                 }
-                
-                // Set Command modifier flag
-                cmdVDown.flags = .maskCommand
-                cmdVUp.flags = .maskCommand
-                
-                // Post the events
-                cmdVDown.post(tap: .cghidEventTap)
-                cmdVUp.post(tap: .cghidEventTap)
-                
-                print("Auto-paste executed for text: '\(text)'")
-                
-                // Show notification with different message for auto-paste
-                self.showNotification(title: "Transcription Pasted", message: "Text automatically pasted")
             }
+        } else {
+            print("Auto-paste: No accessibility permissions. Text copied to clipboard only.")
+            // Show notification for clipboard-only
+            showNotification(title: "Transcription Complete", message: "Text copied to clipboard (enable Accessibility permission for auto-paste)")
         }
     }
     
@@ -280,11 +263,6 @@ class TranscriptionService: ObservableObject {
             print("Error accessing notification center: \(error)")
             print("Notification: \(title) - \(message)")
         }
-    }
-    
-    func setOutputMode(_ mode: Int) {
-        outputMode = mode
-        print("Output mode changed to: \(mode == 0 ? "Clipboard" : "Auto-paste")")
     }
     
     func setMaxRecordingDuration(_ duration: TimeInterval) {

@@ -1,48 +1,108 @@
 import SwiftUI
 
-/// Reactive waveform view that displays a smooth bar animation driven by the incoming audio level.
-/// The view keeps a short history of recent levels so that bars animate from right-to-left similar to
-/// classic voice visualisers.
+/// Ultra-smooth waveform with natural voice-responsive animation
 struct WaveformView: View {
-    /// Current audio level (0.0 – 1.0). Typical RMS levels coming from `AudioManager` are very small
-    /// (≈0.000…-0.02). We multiply with a factor to obtain a perceptible height but still clamp the
-    /// final value to the unit range.
     var level: Float
     
-    /// Number of bars shown at once.
-    private let barCount: Int = 30
-    /// Internal history that is updated every time `level` changes.
-    @State private var history: [CGFloat] = Array(repeating: 0, count: 30)
+    private let barCount: Int = 50
+    @State private var history: [CGFloat] = Array(repeating: 0, count: 50)
+    @State private var smoothHistory: [CGFloat] = Array(repeating: 0, count: 50)
     
     var body: some View {
         GeometryReader { geo in
-            let barSpacing: CGFloat = 2
-            let availableWidth = geo.size.width - (CGFloat(barCount - 1) * barSpacing)
-            let barWidth = max(1, availableWidth / CGFloat(barCount))
-            
-            HStack(alignment: .center, spacing: barSpacing) {
-                ForEach(history.indices, id: \.self) { idx in
-                    Capsule(style: .continuous)
-                        .fill(Color.accentColor)
-                        .frame(width: barWidth,
-                               height: max(1, history[idx] * geo.size.height))
+            HStack(alignment: .center, spacing: 0.8) {
+                ForEach(smoothHistory.indices, id: \.self) { index in
+                    let intensity = smoothHistory[index]
+                    let barHeight = max(2, intensity * geo.size.height * 0.9)
+                    let barWidth = (geo.size.width - (CGFloat(barCount - 1) * 0.8)) / CGFloat(barCount)
+                    
+                    RoundedRectangle(cornerRadius: barWidth / 2)
+                        .fill(
+                            LinearGradient(
+                                colors: getUltraSmoothColors(intensity: intensity),
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                        .frame(width: barWidth, height: barHeight)
+                        .shadow(
+                            color: getSmoothShadow(intensity: intensity),
+                            radius: intensity * 3 + 1,
+                            x: 0,
+                            y: 0
+                        )
+                        .opacity(0.75 + intensity * 0.25)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .onChange(of: level) { newLevel in
-                // Map raw level (0–1) to visual height. We boost low levels for nicer visuals.
-                let boosted = min(1.0, CGFloat(newLevel * 14)) // empiric multiplier
-                withAnimation(.linear(duration: 0.05)) {
-                    history.append(boosted)
-                    if history.count > barCount {
-                        history.removeFirst()
-                    }
-                }
+                updateSmoothBars(newLevel: newLevel)
             }
-            // Keep the view updating even if the value remains identical for a while (e.g. silence).
             .onAppear {
-                // Ensure history has the correct length after hot reloads.
                 history = Array(repeating: 0, count: barCount)
+                smoothHistory = Array(repeating: 0, count: barCount)
+            }
+        }
+    }
+    
+    private func getUltraSmoothColors(intensity: CGFloat) -> [Color] {
+        if intensity < 0.15 {
+            return [
+                Color.cyan.opacity(0.4),
+                Color.cyan.opacity(0.7)
+            ]
+        } else if intensity < 0.35 {
+            return [
+                Color.cyan.opacity(0.6),
+                Color.cyan.opacity(0.9),
+                Color.white.opacity(0.4)
+            ]
+        } else if intensity < 0.65 {
+            return [
+                Color.cyan.opacity(0.8),
+                Color.white.opacity(0.7),
+                Color.cyan.opacity(0.95),
+                Color.blue.opacity(0.6)
+            ]
+        } else {
+            return [
+                Color.blue.opacity(0.7),
+                Color.cyan.opacity(0.95),
+                Color.white.opacity(0.95),
+                Color.cyan.opacity(0.95),
+                Color.blue.opacity(0.7)
+            ]
+        }
+    }
+    
+    private func getSmoothShadow(intensity: CGFloat) -> Color {
+        if intensity < 0.25 {
+            return Color.cyan.opacity(0.4)
+        } else if intensity < 0.55 {
+            return Color.cyan.opacity(0.7)
+        } else {
+            return Color.white.opacity(0.6)
+        }
+    }
+    
+    private func updateSmoothBars(newLevel: Float) {
+        let responsive = min(1.0, CGFloat(newLevel * 32))
+        
+        // Add new value to raw history
+        history.append(responsive)
+        if history.count > barCount {
+            history.removeFirst()
+        }
+        
+        // Create ultra-smooth interpolated values
+        withAnimation(.easeOut(duration: 0.15)) {
+            for i in 0..<barCount {
+                let target = history[i]
+                let current = smoothHistory[i]
+                
+                // Smooth interpolation for natural movement
+                let smoothed = current + (target - current) * 0.4
+                smoothHistory[i] = smoothed
             }
         }
     }
@@ -51,15 +111,25 @@ struct WaveformView: View {
 #if DEBUG
 struct WaveformView_Previews: PreviewProvider {
     struct Demo: View {
-        @State private var level: Float = 0.0
+        @State private var level: Float = 0.4
         var body: some View {
-            VStack {
-                WaveformView(level: level)
-                    .frame(height: 60)
+            ZStack {
+                Color.black
+                VStack(spacing: 20) {
+                    WaveformView(level: level)
+                        .frame(height: 40)
+                        .padding()
+                    
+                    HStack {
+                        Text("Level:")
+                        Slider(value: $level, in: 0...1)
+                        Text("\(Int(level * 100))%")
+                    }
+                    .foregroundColor(.white)
                     .padding()
-                Slider(value: $level, in: 0...1)
+                }
             }
-            .frame(width: 300)
+            .frame(width: 400, height: 160)
         }
     }
     static var previews: some View { Demo() }

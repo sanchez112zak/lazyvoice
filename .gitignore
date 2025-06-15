@@ -1,0 +1,6 @@
+.build/
+*.bin
+lazyvoice.app/Contents/MacOS/
+lazyvoice.app/Contents/Frameworks/
+lazyvoice.app/Contents/Resources/
+create_portable_app.sh

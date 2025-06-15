@@ -8,7 +8,6 @@ struct PreferencesView: View {
         }
     }
     @AppStorage("hotkey") private var hotkey = "⌥+⌘+Space"
-    @AppStorage("outputMode") private var outputMode = 0 // 0: Clipboard, 1: Auto-paste
     @AppStorage("maxRecordingLength") private var maxRecordingLength = 60.0
     @AppStorage("whisperModel") private var whisperModel = "tiny"
     
@@ -16,73 +15,73 @@ struct PreferencesView: View {
     var hotkeyManager: HotkeyManager?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("lazyvoice Preferences")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-            
-            GroupBox("General") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Launch at login", isOn: $launchAtLogin)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Global hotkey:")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("lazyvoice Preferences")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                GroupBox("General") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Launch at login", isOn: $launchAtLogin)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Global hotkey:")
+                            HStack {
+                                HotkeyRecorderView(hotkey: $hotkey) { newHotkey in
+                                    hotkeyManager?.updateHotkey(newHotkey)
+                                }
+                                
+                                Button("Reset to Default") {
+                                    let defaultHotkey = "⌥+⌘+Space"
+                                    hotkey = defaultHotkey
+                                    hotkeyManager?.updateHotkey(defaultHotkey)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Output behavior:")
+                            Text("Transcribed text will be copied to clipboard and automatically pasted when possible.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                }
+                
+                GroupBox("Recording") {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            HotkeyRecorderView(hotkey: $hotkey) { newHotkey in
-                                hotkeyManager?.updateHotkey(newHotkey)
+                            Text("Max recording length:")
+                            Slider(value: $maxRecordingLength, in: 10...120, step: 10)
+                            Text("\(Int(maxRecordingLength))s")
+                                .frame(width: 40)
+                        }
+                    }
+                    .padding()
+                }
+                
+                GroupBox("Transcription") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Whisper model:")
+                            Picker("Model", selection: $whisperModel) {
+                                Text("Tiny (fastest)").tag("tiny")
+                                Text("Base (balanced)").tag("base")
+                                Text("Small (accurate)").tag("small")
                             }
-                            
-                            Button("Reset to Default") {
-                                let defaultHotkey = "⌥+⌘+Space"
-                                hotkey = defaultHotkey
-                                hotkeyManager?.updateHotkey(defaultHotkey)
-                            }
-                            .buttonStyle(.bordered)
+                            .pickerStyle(MenuPickerStyle())
                         }
                     }
-                    
-                    HStack {
-                        Text("Output mode:")
-                        Picker("Output mode", selection: $outputMode) {
-                            Text("Copy to clipboard").tag(0)
-                            Text("Auto-paste").tag(1)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                    }
+                    .padding()
                 }
-                .padding()
+                
+                Spacer()
             }
-            
-            GroupBox("Recording") {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Max recording length:")
-                        Slider(value: $maxRecordingLength, in: 10...120, step: 10)
-                        Text("\(Int(maxRecordingLength))s")
-                            .frame(width: 40)
-                    }
-                }
-                .padding()
-            }
-            
-            GroupBox("Transcription") {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Whisper model:")
-                        Picker("Model", selection: $whisperModel) {
-                            Text("Tiny (fastest)").tag("tiny")
-                            Text("Base (balanced)").tag("base")
-                            Text("Small (accurate)").tag("small")
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                    }
-                }
-                .padding()
-            }
-            
-            Spacer()
+            .padding()
         }
-        .padding()
         .frame(width: 500, height: 400)
     }
     

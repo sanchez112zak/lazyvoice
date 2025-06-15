@@ -164,7 +164,7 @@ class PermissionManager: ObservableObject {
     // MARK: - Onboarding Flow
     func shouldShowOnboarding() -> Bool {
         return microphoneStatus == .notDetermined || 
-               (accessibilityStatus == .denied && UserDefaults.standard.bool(forKey: "outputMode") == true)
+               accessibilityStatus == .denied // Always show onboarding if accessibility is denied since we always try to auto-paste
     }
     
     func startOnboardingFlow() {

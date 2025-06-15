@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import QuartzCore
 
 struct RecordingOverlay: View {
     @Binding var isVisible: Bool
@@ -126,8 +128,8 @@ class RecordingOverlayController {
         // Create overlay view that reacts to live audio level
         let overlayView = SimpleRecordingOverlay(audioManager: audioManager)
         
-        // Create window with proper cleanup
-        let windowRect = NSRect(x: 0, y: 0, width: 200, height: 80)
+        // Create window with proper configuration for pixel-perfect rendering
+        let windowRect = NSRect(x: 0, y: 0, width: 180, height: 80)
         window = NSWindow(
             contentRect: windowRect,
             styleMask: [.borderless],
@@ -140,29 +142,64 @@ class RecordingOverlayController {
             return
         }
         
-        // Configure window 
+        // Configure window for pixel-perfect Apple-style overlay with full transparency
         window.level = .floating
         window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
+        window.backgroundColor = NSColor.clear
+        window.hasShadow = false  // Let SwiftUI handle shadows
         window.ignoresMouseEvents = true
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        window.animationBehavior = .none
         
         // Position in bottom-center
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let windowFrame = window.frame
             let x = screenFrame.minX + (screenFrame.width - windowFrame.width) / 2
-            let y = screenFrame.minY + 20
+            let y = screenFrame.minY + 100
             window.setFrameOrigin(NSPoint(x: x, y: y))
         }
         
-        // Set content and show
-        window.contentView = NSHostingView(rootView: overlayView)
+        // Set content with proper hosting configuration for full transparency
+        let hostingView = NSHostingView(rootView: overlayView)
+        
+        // Ensure complete transparency at all levels
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingView.layer?.isOpaque = false
+        hostingView.wantsLayer = true
+        
+        // Make sure the hosting view itself is transparent
+        hostingView.layer?.masksToBounds = false
+        
+        window.contentView = hostingView
+        
+        // Final transparency check - ensure window content view background is clear
+        window.contentView?.wantsLayer = true
+        window.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
+        
+        // CRITICAL: Shape the window to match the rounded rectangle to eliminate dark corners
+        DispatchQueue.main.async {
+            let rect = NSRect(x: 0, y: 0, width: 180, height: 80)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 20, yRadius: 20)
+            
+            let shapeLayer = CAShapeLayer()
+            if #available(macOS 14.0, *) {
+                shapeLayer.path = path.cgPath
+            } else {
+                // Fallback for older macOS versions
+                let cgPath = CGMutablePath()
+                cgPath.addRoundedRect(in: CGRect(x: 0, y: 0, width: 180, height: 80), 
+                                     cornerWidth: 20, cornerHeight: 20)
+                shapeLayer.path = cgPath
+            }
+            
+            window.contentView?.layer?.mask = shapeLayer
+        }
+        
         window.makeKeyAndOrderFront(nil)
         
         isVisible = true
-        print("Simple overlay shown")
+        print("Optimized overlay shown")
     }
     
     func hideOverlay() {
@@ -181,13 +218,12 @@ class RecordingOverlayController {
         }
         
         cleanup()
-        print("Simple overlay hidden")
+        print("Optimized overlay hidden")
     }
 }
 
 // MARK: - Simple Recording Overlay View (Fixed)
 struct SimpleRecordingOverlay: View {
-    @State private var pulseScale: CGFloat = 1.0
     @ObservedObject private var audioManager: AudioManager
     
     init(audioManager: AudioManager) {
@@ -195,46 +231,38 @@ struct SimpleRecordingOverlay: View {
     }
     
     var body: some View {
-        VStack(spacing: 10) {
-            // Pulsing mic indicator and status text
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 12, height: 12)
-                    .scaleEffect(pulseScale)
-                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulseScale)
-                Text("Recording…")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.primary)
+        // Just the beautiful waveform - ultra minimal with perfect transparency
+        WaveformView(level: audioManager.audioLevel)
+            .frame(height: 50)
+            .frame(width: 180, height: 80)
+            .background {
+                // Perfect Apple-style rounded square
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.black)
+                    .overlay {
+                        // Subtle inner highlight for depth
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        .white.opacity(0.08),
+                                        .clear,
+                                        .white.opacity(0.03)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .overlay {
+                        // Clean border definition
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                    }
             }
-
-            // Waveform that reacts to live audio
-            WaveformView(level: audioManager.audioLevel)
-                .frame(height: 36)
-                .frame(maxWidth: 140)
-
-            // Instruction
-            Text("Press ESC to cancel")
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
-        )
-        .onAppear {
-            // Kick off pulsing animation
-            DispatchQueue.main.async {
-                pulseScale = 1.3
-            }
-        }
-        .onDisappear {
-            DispatchQueue.main.async {
-                pulseScale = 1.0
-            }
-        }
+            .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
+            .compositingGroup() // Ensure proper compositing for transparency
+            .clipped() // Clip to bounds to prevent any overflow
     }
 }
 
