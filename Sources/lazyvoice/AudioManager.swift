@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import AudioUnit
 
 class AudioManager: ObservableObject {
     @Published var isRecording = false
@@ -61,6 +62,57 @@ class AudioManager: ObservableObject {
         print("AudioManager: Audio session setup completed")
     }
     
+    private func resetAudioEngineForCurrentDevices() {
+        // Reset the audio engine to pick up current device configuration
+        // This is important when headphones are connected/disconnected
+        print("AudioManager: Resetting audio engine for current device configuration")
+        
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        
+        // Create a completely new audio engine instance
+        audioEngine = AVAudioEngine()
+        print("AudioManager: Created new audio engine instance")
+    }
+    
+    private func logAvailableInputDevices() {
+        // Create a discovery session to find all available microphones
+        var deviceTypes: [AVCaptureDevice.DeviceType] = []
+        
+        // Use different device types based on macOS version
+        if #available(macOS 14.0, *) {
+            deviceTypes = [.microphone, .external]
+        } else {
+            deviceTypes = [.builtInMicrophone, .externalUnknown]
+        }
+        
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: deviceTypes,
+            mediaType: .audio,
+            position: .unspecified
+        )
+        
+        let availableDevices = discoverySession.devices
+        print("AudioManager: Available input devices:")
+        for device in availableDevices {
+            print("  - \(device.localizedName) (\(device.deviceType.rawValue)) ID: \(device.uniqueID)")
+        }
+        
+        // Also check what the system considers the default
+        if let defaultDevice = AVCaptureDevice.default(for: .audio) {
+            print("AudioManager: System default input device: \(defaultDevice.localizedName)")
+        } else {
+            print("AudioManager: No default input device found")
+        }
+        
+        // Log AVAudioEngine's input node info after reset
+        let inputNode = audioEngine.inputNode
+        let inputFormat = inputNode.inputFormat(forBus: 0)
+        let outputFormat = inputNode.outputFormat(forBus: 0)
+        print("AudioManager: AVAudioEngine input node - Input: \(inputFormat), Output: \(outputFormat)")
+    }
+    
     func startRecording() {
         guard !isRecording else { 
             print("AudioManager: Already recording, ignoring start request")
@@ -71,10 +123,11 @@ class AudioManager: ObservableObject {
             // Clean up any previous state
             cleanup()
             
-            // Reinitialize audio engine if needed
-            if !audioEngine.isRunning {
-                audioEngine = AVAudioEngine()
-            }
+            // Always reset audio engine to handle device changes (like headphones)
+            resetAudioEngineForCurrentDevices()
+            
+            // Log available input devices for debugging
+            logAvailableInputDevices()
             
             // Clear previous recording
             recordedSamples.removeAll()
