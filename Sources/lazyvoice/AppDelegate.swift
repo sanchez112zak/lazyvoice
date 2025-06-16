@@ -5,11 +5,15 @@ import Combine
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem?
     private var menuBarView: MenuBarView?
-    private var transcriptionService = TranscriptionService()
-    private var hotkeyManager = HotkeyManager()
-    private lazy var recordingOverlay = RecordingOverlayController(audioManager: transcriptionService.audioManager)
+    private var transcriptionService: TranscriptionService?
+    private var hotkeyManager: HotkeyManager?
+    private var recordingOverlay: RecordingOverlayController?
     private var cancellables = Set<AnyCancellable>()
     private let permissionManager = PermissionManager.shared
+    private let audioFeedbackManager = AudioFeedbackManager()
+    
+    // Loading screen
+    private let loadingController = LoadingWindowController()
     
     // Recording state management
     private var isCurrentlyRecording = false
@@ -23,33 +27,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var onboardingWindow: NSWindow?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Create status item
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        print("🚀 App launching...")
         
-        if let statusButton = statusItem?.button {
-            statusButton.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "lazyvoice")
-            statusButton.action = #selector(statusItemClicked)
-            statusButton.target = self
+        // Show loading screen immediately
+        loadingController.showLoadingScreen()
+        
+        // Initialize app components asynchronously
+        Task {
+            await initializeAppComponents()
+            print("✅ App initialization complete - app should continue running")
         }
-        
-        // Initialize menu bar view
-        menuBarView = MenuBarView()
-        setupMenu()
-        
-        // Setup hotkey system
-        setupHotkeySystem()
-        
-        // Setup state monitoring
-        setupStateMonitoring()
-        
-        // Setup ESC key monitoring for cancellation
-        setupEscapeKeyMonitoring()
-        
-        // Hide dock icon (menu bar app only)
-        NSApp.setActivationPolicy(.accessory)
-        
-        // Check permissions and show onboarding if needed
-        checkPermissionsAndShowOnboarding()
     }
     
     func applicationWillTerminate(_ notification: Notification) {
@@ -60,8 +47,125 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         
         // Clean up other resources
-        hotkeyManager.setEnabled(false)
-        recordingOverlay.hideOverlay()
+        hotkeyManager?.setEnabled(false)
+        recordingOverlay?.hideOverlay()
+    }
+    
+    // MARK: - Async Initialization
+    @MainActor
+    private func initializeAppComponents() async {
+        do {
+            // Step 1: Basic UI setup (20%)
+            loadingController.updateProgress(0.2, text: "Setting up interface...")
+            await setupBasicUI()
+            
+            // Step 2: Audio subsystem (40%)
+            loadingController.updateProgress(0.4, text: "Initializing audio system...")
+            await initializeAudioSystem()
+            
+            // Step 3: ML models (70%)
+            loadingController.updateProgress(0.7, text: "Loading transcription models...")
+            await initializeTranscriptionService()
+            
+            // Step 4: Permissions and hotkeys (90%)
+            loadingController.updateProgress(0.9, text: "Setting up permissions...")
+            await setupPermissionsAndHotkeys()
+            
+            // Step 5: Finalize (100%)
+            loadingController.updateProgress(1.0, text: "Ready!")
+            await finalizeSetup()
+            
+            // Small delay to show completion
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            // Hide loading screen
+            loadingController.hideLoadingScreen()
+            print("🎯 Loading screen hidden - app should be ready")
+            
+        } catch {
+            print("❌ Initialization error: \(error)")
+            // Still hide loading screen on error and continue with basic functionality
+            loadingController.hideLoadingScreen()
+            await handleInitializationFailure(error)
+        }
+    }
+    
+    @MainActor
+    private func setupBasicUI() async {
+        print("🔧 Setting up basic UI...")
+        
+        // Hide dock icon (menu bar app only) - do this first
+        NSApp.setActivationPolicy(.accessory)
+        
+        // Create status item
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        
+        if let statusButton = statusItem?.button {
+            statusButton.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "lazyvoice")
+            statusButton.action = #selector(statusItemClicked)
+            statusButton.target = self
+            print("✅ Status bar button created")
+        } else {
+            print("❌ Failed to create status bar button")
+        }
+        
+        // Initialize menu bar view
+        menuBarView = MenuBarView()
+        setupMenu()
+        
+        print("✅ Basic UI setup complete")
+    }
+    
+    private func initializeAudioSystem() async {
+        // Give audio system time to initialize
+        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+    }
+    
+    private func initializeTranscriptionService() async {
+        // Initialize transcription service (this loads the ML models)
+        transcriptionService = TranscriptionService()
+        
+        // Give models time to load
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        
+        // Create recording overlay after transcription service is ready
+        if let transcriptionService = transcriptionService {
+            recordingOverlay = RecordingOverlayController(audioManager: transcriptionService.audioManager)
+        }
+    }
+    
+    private func setupPermissionsAndHotkeys() async {
+        // Setup hotkey system
+        hotkeyManager = HotkeyManager()
+        setupHotkeySystem()
+        
+        // Setup state monitoring
+        setupStateMonitoring()
+        
+        // Setup ESC key monitoring for cancellation
+        setupEscapeKeyMonitoring()
+        
+        // Check permissions and show onboarding if needed
+        checkPermissionsAndShowOnboarding()
+    }
+    
+    private func finalizeSetup() async {
+        // Any final setup tasks
+        print("🎉 lazyvoice initialization complete!")
+    }
+    
+    @MainActor
+    private func handleInitializationFailure(_ error: Error) async {
+        // Fallback initialization with minimal functionality
+        await setupBasicUI()
+        
+        // Show error notification
+        let alert = NSAlert()
+        alert.messageText = "Initialization Warning"
+        alert.informativeText = "Some features may not be available due to initialization errors. Please restart the app if issues persist."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Continue")
+        alert.runModal()
     }
     
     // MARK: - Menu Bar App Behavior
@@ -122,30 +226,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             menu.addItem(NSMenuItem(title: "Stop Recording", action: #selector(stopRecording), keyEquivalent: "s"))
             menu.addItem(NSMenuItem(title: "Cancel Recording (ESC)", action: #selector(cancelRecordingMenu), keyEquivalent: ""))
         } else {
-            menu.addItem(NSMenuItem(title: "Start Recording (\(hotkeyManager.hotkey))", action: #selector(startRecording), keyEquivalent: "r"))
+            let hotkeyText = hotkeyManager?.hotkey ?? "⌥+⌘+Space"
+            menu.addItem(NSMenuItem(title: "Start Recording (\(hotkeyText))", action: #selector(startRecording), keyEquivalent: "r"))
         }
         
         menu.addItem(NSMenuItem.separator())
         
         // Recent transcriptions submenu
-        let recentTranscriptions = transcriptionService.historyManager.recentTranscriptions(count: 5)
-        if !recentTranscriptions.isEmpty {
-            let historySubmenu = NSMenu()
-            
-            for transcription in recentTranscriptions {
-                let truncatedText = String(transcription.text.prefix(50)) + (transcription.text.count > 50 ? "..." : "")
-                let item = NSMenuItem(title: truncatedText, action: #selector(copyRecentTranscription(_:)), keyEquivalent: "")
-                item.representedObject = transcription
-                item.target = self
-                historySubmenu.addItem(item)
+        if let transcriptionService = transcriptionService {
+            let recentTranscriptions = transcriptionService.historyManager.recentTranscriptions(count: 5)
+            if !recentTranscriptions.isEmpty {
+                let historySubmenu = NSMenu()
+                
+                for transcription in recentTranscriptions {
+                    let truncatedText = String(transcription.text.prefix(50)) + (transcription.text.count > 50 ? "..." : "")
+                    let item = NSMenuItem(title: truncatedText, action: #selector(copyRecentTranscription(_:)), keyEquivalent: "")
+                    item.representedObject = transcription
+                    item.target = self
+                    historySubmenu.addItem(item)
+                }
+                
+                historySubmenu.addItem(NSMenuItem.separator())
+                historySubmenu.addItem(NSMenuItem(title: "Show All...", action: #selector(showHistory), keyEquivalent: ""))
+                
+                let historyMenuItem = NSMenuItem(title: "Recent Transcriptions", action: nil, keyEquivalent: "")
+                historyMenuItem.submenu = historySubmenu
+                menu.addItem(historyMenuItem)
             }
-            
-            historySubmenu.addItem(NSMenuItem.separator())
-            historySubmenu.addItem(NSMenuItem(title: "Show All...", action: #selector(showHistory), keyEquivalent: ""))
-            
-            let historyMenuItem = NSMenuItem(title: "Recent Transcriptions", action: nil, keyEquivalent: "")
-            historyMenuItem.submenu = historySubmenu
-            menu.addItem(historyMenuItem)
         }
         
         menu.addItem(NSMenuItem(title: "History", action: #selector(showHistory), keyEquivalent: "h"))
@@ -157,13 +264,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     @objc func startRecording() {
-        guard !isCurrentlyRecording else { return }
+        guard !isCurrentlyRecording, let transcriptionService = transcriptionService else { return }
         
         print("Start recording")
         isCurrentlyRecording = true
         
+        // Play mic on sound
+        audioFeedbackManager.playMicOnSound()
+        
         // Show live waveform overlay
-        recordingOverlay.showOverlay()
+        recordingOverlay?.showOverlay()
         
         // Update status icon manually
         updateStatusIcon(recording: true, transcribing: false)
@@ -173,7 +283,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     @objc func stopRecording() {
-        guard isCurrentlyRecording else { return }
+        guard isCurrentlyRecording, let transcriptionService = transcriptionService else { return }
         
         print("Stop recording")
         isCurrentlyRecording = false
@@ -184,7 +294,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Now it is safe to remove the overlay (after Combine updates).
         // Delay slightly to guarantee the main-thread updates from AudioManager have been delivered.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.recordingOverlay.hideOverlay()
+            self?.recordingOverlay?.hideOverlay()
         }
         
         // Update status icon manually  
@@ -205,16 +315,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     private func cancelRecording() {
-        guard isCurrentlyRecording else { return }
+        guard isCurrentlyRecording, let transcriptionService = transcriptionService else { return }
         
         print("Recording cancelled")
         isCurrentlyRecording = false
+        
         // Stop recording first
         transcriptionService.stopRecording()
         
         // Hide live waveform overlay afterwards with a slight delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.recordingOverlay.hideOverlay()
+            self?.recordingOverlay?.hideOverlay()
         }
         updateMenu()
     }
@@ -226,6 +337,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         historyWindow?.close()
         
         // Create history view with error handling
+        guard let transcriptionService = transcriptionService else { return }
         let historyView = HistoryView(historyManager: transcriptionService.historyManager)
             .errorAlert()
         
@@ -258,6 +370,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         preferencesWindow = nil
         
         // Create preferences view with hotkey manager reference and error handling
+        guard let hotkeyManager = hotkeyManager else { return }
         let preferencesView = PreferencesView(hotkeyManager: hotkeyManager)
             .errorAlert()
         
@@ -285,7 +398,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     @objc func copyRecentTranscription(_ sender: NSMenuItem) {
-        guard let transcription = sender.representedObject as? Transcription else { return }
+        guard let transcription = sender.representedObject as? Transcription,
+              let transcriptionService = transcriptionService else { return }
         transcriptionService.historyManager.copyToClipboard(transcription)
     }
     
@@ -296,6 +410,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Phase 2: Hotkey System Setup
     
     private func setupHotkeySystem() {
+        guard let hotkeyManager = hotkeyManager else { return }
+        
         // Set up global hotkey callback with weak reference
         hotkeyManager.onHotkeyPressed = { [weak self] in
             print("Global hotkey pressed!")

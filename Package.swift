@@ -48,11 +48,13 @@ let package = Package(
                 "MenuBarView.swift",
                 "PreferencesView.swift",
                 "AudioManager.swift",
+                "AudioFeedbackManager.swift",
                 "WhisperManager.swift",
                 "TranscriptionService.swift",
                 "AudioResampler.swift",
                 "HotkeyManager.swift",
                 "RecordingOverlay.swift",
+                "LoadingView.swift",
                 "Transcription.swift",
                 "HistoryManager.swift",
                 "HistoryView.swift",
@@ -63,7 +65,8 @@ let package = Package(
             resources: [
                 .copy("ggml-tiny.bin"),
                 .copy("ggml-base.bin"),
-                .copy("ggml-small.bin")
+                .copy("ggml-small.bin"),
+                .copy("mic on.wav")
             ],
             linkerSettings: [
                 .linkedFramework("AVFoundation"),

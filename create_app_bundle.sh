@@ -32,6 +32,9 @@ cp "Sources/lazyvoice/ggml-tiny.bin" "${RESOURCES_DIR}/"
 cp "Sources/lazyvoice/ggml-base.bin" "${RESOURCES_DIR}/" 2>/dev/null || echo "Warning: ggml-base.bin not found"
 cp "Sources/lazyvoice/ggml-small.bin" "${RESOURCES_DIR}/" 2>/dev/null || echo "Warning: ggml-small.bin not found"
 
+# Copy audio feedback files
+cp "Sources/lazyvoice/mic on.wav" "${RESOURCES_DIR}/" 2>/dev/null || echo "Warning: mic on.wav not found"
+
 # Copy app icons
 if [ -d "Resources/Assets.xcassets/AppIcon.appiconset" ]; then
     # Create App Icon
